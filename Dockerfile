@@ -6,5 +6,5 @@ RUN mvn clean spotless:apply package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=builder /build/target/user-service-*.jar app.jar
+COPY --from=builder /build/target/api-gateway-*.jar app.jar
 ENTRYPOINT ["java", "-Dspring.profiles.active=docker", "-jar", "app.jar"]
