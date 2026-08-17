@@ -118,9 +118,11 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-user-db:5432/mydb
-      - REDIS_HOST=redis-user
       - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
       - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+      - REDIS_HOST=redis-user
+      - REDIS_PORT=${REDIS_PORT}
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - innowise_network
 
@@ -141,10 +143,12 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-order-db:5432/mydb
-      - REDIS_HOST=redis-order
-      - USER_SERVICE_URL=http://user-service:8080
       - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
       - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+      - REDIS_HOST=redis-order
+      - REDIS_PORT=${REDIS_PORT}
+      - USER_SERVICE_URL=http://user-service:8080
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - innowise_network
 
@@ -163,9 +167,10 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-auth-db:5432/auth_db
-      - USER_SERVICE_URL=http://user-service:8080
       - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
       - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+      - USER_SERVICE_URL=http://user-service:8080
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - innowise_network
 
