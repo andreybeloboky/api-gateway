@@ -1,4 +1,174 @@
 services:
+
+  postgres-user-db:
+    image: postgres:17
+    container_name: postgres-user-db
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-root}
+    ports:
+      - "5432:5432"
+    networks:
+      - innowise_network
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-postgres} -d mydb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-user:
+    image: redis
+    container_name: redis-user
+    hostname: redis-user
+    ports:
+      - "6379:6379"
+    networks:
+      - innowise_network
+    volumes:
+      - user_redis_data:/data
+
+  redis-commander-user:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander-user
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:redis-user:6379
+    ports:
+      - "8091:8081"
+    networks:
+      - innowise_network
+
+  postgres-order-db:
+    image: postgres:17
+    container_name: postgres-order-db
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-root}
+    ports:
+      - "5434:5432"
+    networks:
+      - innowise_network
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-postgres} -d mydb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-order:
+    image: redis
+    container_name: redis-order
+    hostname: redis-order
+    ports:
+      - "6380:6379"
+    networks:
+      - innowise_network
+    volumes:
+      - order_redis_data:/data
+
+  redis-commander-order:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander-order
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:redis-order:6379
+    ports:
+      - "8092:8081"
+    networks:
+      - innowise_network
+
+  postgres-auth-db:
+    image: postgres:17
+    container_name: postgres-auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
+    ports:
+      - "5433:5432"
+    networks:
+      - innowise_network
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d auth_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build:
+      context: ../user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres-user-db:
+        condition: service_healthy
+      redis-user:
+        condition: service_started
+    env_file:
+      - ../user-service/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-user-db:5432/mydb
+      - REDIS_HOST=redis-user
+      - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+    networks:
+      - innowise_network
+
+  order-service:
+    build:
+      context: ../order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8084:8080"
+    depends_on:
+      postgres-order-db:
+        condition: service_healthy
+      redis-order:
+        condition: service_started
+    env_file:
+      - ../order-service/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-order-db:5432/mydb
+      - REDIS_HOST=redis-order
+      - USER_SERVICE_URL=http://user-service:8080
+      - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+    networks:
+      - innowise_network
+
+  auth-service:
+    build:
+      context: ../authentication-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8082:8080"
+    depends_on:
+      postgres-auth-db:
+        condition: service_healthy
+    env_file:
+      - ../authentication-service/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-auth-db:5432/auth_db
+      - USER_SERVICE_URL=http://user-service:8080
+      - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
+      - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
+    networks:
+      - innowise_network
+
   api-gateway:
     build:
       context: .
@@ -6,11 +176,22 @@ services:
     container_name: api-gateway
     ports:
       - "8080:8080"
+    depends_on:
+      - user-service
+      - order-service
+      - auth-service
     networks:
-      - shared_network
+      - innowise_network
     environment:
       - JWT_SECRET=${JWT_SECRET}
 
+volumes:
+  user_db_data:
+  user_redis_data:
+  order_db_data:
+  order_redis_data:
+  auth_db_data:
+
 networks:
-  shared_network:
-    external: true
+  innowise_network:
+    driver: bridge
