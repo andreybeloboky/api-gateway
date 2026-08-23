@@ -1,5 +1,54 @@
 services:
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - innowise_network
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - innowise_network
+
+  payment-mongodb:
+      image: mongo:7.0
+      container_name: payment-mongodb
+      restart: always
+      environment:
+        MONGO_INITDB_DATABASE: payment-db
+      ports:
+        - "27017:27017"
+      volumes:
+        - payment_mongodb_data:/data/db
+      networks:
+        - innowise_network
+      healthcheck:
+        test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+
   postgres-user-db:
     image: postgres:17
     container_name: postgres-user-db
@@ -147,7 +196,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
       - REDIS_HOST=redis-order
       - REDIS_PORT=${REDIS_PORT}
-      - USER_SERVICE_URL=http://user-service:8080
+      - USER_SERVICE_URL=${USER_SERVICE_URL}
       - JWT_SECRET=${JWT_SECRET}
     networks:
       - innowise_network
@@ -169,8 +218,33 @@ services:
       - SPRING_DATASOURCE_AUTH_URL=${SPRING_DATASOURCE_AUTH_URL}
       - SPRING_DATASOURCE_USERNAME=${DATABASE_USERNAME:-postgres}
       - SPRING_DATASOURCE_PASSWORD=${DATABASE_PASSWORD:-root}
-      - USER_SERVICE_URL=http://user-service:8080
+      - USER_SERVICE_URL=${USER_SERVICE_URL}
       - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - innowise_network
+
+  payment-service:
+    build:
+      context: ../payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "8085:8080"
+    depends_on:
+      payment-mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../payment-service/.env
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATA_MONGODB_URI=mongodb://payment-mongodb:27017/payment-db
+      - SPRING_DATA_MONGODB_DATABASE=payment-db
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - PAYMENT_SERVICE_URL=${PAYMENT_SERVICE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - EXTERNAL_RANDOM_API_URL=https://www.randomnumberapi.com/api/v1.0/random?min=1&max=100&count=1
     networks:
       - innowise_network
 
@@ -185,6 +259,7 @@ services:
       - user-service
       - order-service
       - auth-service
+      - payment-service
     networks:
       - innowise_network
     environment:
