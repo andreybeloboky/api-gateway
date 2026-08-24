@@ -27,6 +27,11 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     networks:
       - innowise_network
 
@@ -187,6 +192,8 @@ services:
         condition: service_healthy
       redis-order:
         condition: service_started
+      kafka:
+        condition: service_healthy
     env_file:
       - ../order-service/.env
     environment:
@@ -238,7 +245,6 @@ services:
     env_file:
       - ../payment-service/.env
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
       - SPRING_DATA_MONGODB_URI=mongodb://payment-mongodb:27017/payment-db
       - SPRING_DATA_MONGODB_DATABASE=payment-db
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
@@ -271,6 +277,7 @@ volumes:
   order_db_data:
   order_redis_data:
   auth_db_data:
+  payment_mongodb_data:
 
 networks:
   innowise_network:
